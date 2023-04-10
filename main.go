@@ -1,38 +1,48 @@
 package main
 
 import (
-	"fmt"
-	"io/ioutil"
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"time"
+
+	"github.com/sdivyansh59/nic_jackson/handlers"
 )
 
 func main() {
+	l := log.New(os.Stdout, "product-api", log.LstdFlags)
+	hh := handlers.NewHello(l)
+	gh := handlers.NewGoodbye(l)
 
-	http.HandleFunc("/", func (w http.ResponseWriter, r *http.Request){
-		log.Println("Hello World")
-		d, err := ioutil.ReadAll(r.Body)
+	sm := http.NewServeMux()
+	sm.Handle("/",hh)
+	sm.Handle("/goodbye",gh)
+
+	s := &http.Server{
+		Addr: ":9090",
+		Handler: sm,
+		IdleTimeout: 120 *time.Second,
+		ReadTimeout: 1 * time.Second,
+		WriteTimeout: 1*time.Second,
+	}
+
+	go func() {
+		err := s.ListenAndServe()
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Oops"))
-			
-			// line 19 is === 16 & 17
-			http.Error(w,"Oops", http.StatusBadRequest)
-			return 
+			l.Fatal(err)
 		}
+	}()
 
-		log.Printf("Data %s ", d) // convert []bytes in string and print
-		log.Println(d) // print []byte (which is d)
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan, os.Kill)
 
-		// write back to user using responseWriter
-		fmt.Fprintf(w, "hello %s ","Divyansh")
+	sig := <- sigChan
+	l.Println("Received terminate , graceful shutdown", sig)
 
-		
-	})
 
-	http.HandleFunc("/goodbye", func (w http.ResponseWriter, r *http.Request){
-		log.Println("Goodbye World")	
-	})
-
-	http.ListenAndServe(":9090", nil)
+	tc ,_ := context.WithTimeout(context.Background(), 30 *time.Second)
+	s.Shutdown(tc)
 }
